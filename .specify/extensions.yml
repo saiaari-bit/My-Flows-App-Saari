@@ -1,0 +1,13 @@
+# Cognite CDF extensions for spec-kit.
+# This file is installed by @cognite/cli into .specify/extensions.yml.
+# Do NOT modify _vendor/spec-kit/ to extend spec-kit — add extensions here instead.
+#
+# TODO(DUNE-866): speckit.cdf-datamodel currently infers the data model from the spec/plan.
+# Once the CDF SDK Generator is stable, switch the command to consume its output
+# as the source of truth for spaces, views, containers, and properties.
+hooks:
+  after_specify:
+    - extension: "cognite-cdf"
+      command: "speckit.cdf-datamodel"
+      optional: false
+      description: "Generate CDF data model documentation if the feature touches CDF data (Solution Support handoff)"

@@ -1,0 +1,17 @@
+{
+  "name": "Saari Flows App test",
+  "description": "A Flows application that helps me in learning and testing",
+  "externalId": "my-flows-app-saari",
+  "versionTag": "0.0.1",
+  "infra": "appsApi",
+  "deployments": [
+    {
+      "org": "cog-demo",
+      "project": "lervik-industries",
+      "baseUrl": "https://greenfield.cognitedata.com",
+      "published": false,
+      "deployClientId": "",
+      "deploySecretName": "COG_DEMO_LERVIK_INDUSTRIES_GREENFIELD"
+    }
+  ]
+}
