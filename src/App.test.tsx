@@ -1,122 +1,122 @@
-import type { HostAppAPI, ConnectToHostAppResult } from '@cognite/app-sdk';
+import type { ConnectToHostAppResult, HostAppAPI } from '@cognite/app-sdk';
 import { CogniteClient } from '@cognite/sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import appConfig from '../app.json';
+
 import App from './App';
-import { OperationsViewModelContext } from './context/OperationsViewModelContext';
-import { emptySnapshot } from './domain/aggregateOperations';
-import type { OperationsSnapshot, WorkflowExecutionRecord } from './domain/operationsTypes';
-import type { OperationsService } from './services/operationsService';
 
-type AppDeps = NonNullable<ComponentProps<typeof App>['deps']>;
-type AppApi = Pick<HostAppAPI, 'syncInternalState'>;
-
-function makeApi(): AppApi {
-  return {
-    syncInternalState: vi.fn<HostAppAPI['syncInternalState']>(() => Promise.resolve(true)),
-  };
-}
-
-function makeConnectedFn(api: AppApi = makeApi()) {
-  return vi.fn(() => Promise.resolve({ api }));
-}
-
-function makeDeps(): AppDeps {
-  return {
-    connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(() =>
-      Promise.resolve({
-        api: {
-          getProject: vi.fn<HostAppAPI['getProject']>(() => Promise.resolve('celanse-dev')),
-          getBaseUrl: vi.fn<HostAppAPI['getBaseUrl']>(() =>
-            Promise.resolve('https://az-eastus-1.cognitedata.com'),
-          ),
-          getAccessToken: vi.fn<HostAppAPI['getAccessToken']>(() => Promise.resolve('test-token')),
-          getAppId: vi.fn<HostAppAPI['getAppId']>(() => Promise.resolve('test-app-id')),
-        } as Partial<HostAppAPI> as HostAppAPI,
-      }),
-    ),
-    createClient: vi.fn<AppDeps['createClient']>((config) => new CogniteClient(config)),
-  };
-}
-
-function makeLoadingDeps(): AppDeps {
-  return {
-    connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(
-      () => new Promise<ConnectToHostAppResult>(() => undefined),
-    ),
-    createClient: vi.fn<AppDeps['createClient']>((config) => new CogniteClient(config)),
-  };
-}
-
-const sampleExecution: WorkflowExecutionRecord = {
-  id: 'ex-1',
-  workflowExternalId: 'wf-cnt-extract',
-  version: '1',
-  status: 'RUNNING',
-  createdMs: 0,
-  startMs: 0,
-  endMs: null,
-  tasks: [],
-};
-
-function snapshotWithRun(): OperationsSnapshot {
-  return {
-    ...emptySnapshot(10_000),
-    executions: [sampleExecution],
-  };
-}
-
-function renderApp(
-  ui: Parameters<typeof render>[0],
-  loadWindow: OperationsService['loadWindow'] = async () => emptySnapshot(10_000),
-) {
-  return render(
-    <OperationsViewModelContext.Provider
-      value={{
-        createService: () => ({ loadWindow }),
-        nowMs: () => 10_000,
-      }}
-    >
-      {ui}
-    </OperationsViewModelContext.Provider>,
-  );
-}
+type AppProps = ComponentProps<typeof App>;
+type ProviderDeps = NonNullable<AppProps['deps']>;
 
 describe('App', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
-  it('renders loading state', () => {
-    renderApp(
-      <App deps={makeLoadingDeps()} connectToHostApp={() => new Promise<never>(() => undefined)} />,
-    );
-    expect(screen.getByText('Loading project...')).toBeInTheDocument();
+  it('tells the user it is connecting while the handshake is pending', () => {
+    renderApp({ deps: pendingDeps(), connectToHostApp: () => new Promise<never>(() => undefined) });
+
+    expect(screen.getByText('Connecting to Cognite Data Fusion…')).toBeInTheDocument();
   });
 
-  it('renders the operations dashboard for the connected project', async () => {
-    renderApp(<App deps={makeDeps()} connectToHostApp={makeConnectedFn()} />);
-    await waitFor(() => expect(screen.getByText('CDF workflow operations')).toBeInTheDocument());
-    expect(screen.getByText(/celanse-dev/)).toBeInTheDocument();
-    expect(screen.getByText(/Estimated analog/)).toBeInTheDocument();
-    expect(screen.getByText('Overall analog cost (24h)')).toBeInTheDocument();
-    expect(screen.getByText('Functions')).toBeInTheDocument();
-    expect(screen.getByText('Transformations')).toBeInTheDocument();
+  it('explains what to do when the host handshake fails', async () => {
+    renderApp({ deps: failingDeps(), connectToHostApp: () => Promise.reject(new Error('no host')) });
+
+    expect(
+      await screen.findByText('Could not connect to Cognite Data Fusion')
+    ).toBeInTheDocument();
   });
 
-  it('syncs selected execution to the host', async () => {
-    const api = makeApi();
-    renderApp(
-      <App deps={makeDeps()} connectToHostApp={makeConnectedFn(api)} />,
-      async () => snapshotWithRun(),
-    );
-    await waitFor(() => expect(screen.getAllByText('wf-cnt-extract').length).toBeGreaterThan(0));
-    await userEvent.click(screen.getAllByText('wf-cnt-extract')[0]);
-    expect(api.syncInternalState).toHaveBeenCalledWith(
-      JSON.stringify({ selectedExecutionId: 'ex-1', tab: 'overview' }),
-    );
+  it('opens the workspace ready for a search once connected', async () => {
+    renderApp({ deps: connectedDeps(), connectToHostApp: connectFn() });
+
+    expect(await screen.findByRole('heading', { name: 'Start with an asset' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search for an asset' })).toBeInTheDocument();
+  });
+
+  it('identifies itself to the host with the external id from app.json', async () => {
+    const connect = connectFn();
+    renderApp({ deps: connectedDeps(), connectToHostApp: connect });
+
+    await waitFor(() => expect(connect).toHaveBeenCalled());
+    expect(appConfig.externalId).toBe('asset-360-investigation-workspace');
+  });
+
+  it('waits for the host handshake before mounting the workspace', async () => {
+    // The handshake carries the state the host read from the URL. Mounting the
+    // workspace first would seed it with defaults and lose a shared link.
+    renderApp({ deps: connectedDeps(), connectToHostApp: () => new Promise<never>(() => undefined) });
+
+    expect(await screen.findByText('Connecting to Cognite Data Fusion…')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Start with an asset' })).not.toBeInTheDocument();
+  });
+
+  it('passes the state the host read from the URL to the workspace', async () => {
+    const connect = connectFn('{"tab":"documents","window":"7d"}');
+
+    renderApp({ deps: connectedDeps(), connectToHostApp: connect });
+
+    await screen.findByRole('heading', { name: 'Start with an asset' });
+    expect(await connect.mock.results[0]?.value).toMatchObject({
+      initialState: '{"tab":"documents","window":"7d"}',
+    });
   });
 });
+
+function renderApp(props: AppProps) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+  return render(<App {...props} />, { wrapper });
+}
+
+function connectFn(initialState?: string) {
+  return vi.fn(() =>
+    Promise.resolve({
+      api: {
+        syncInternalState: vi.fn<HostAppAPI['syncInternalState']>(() => Promise.resolve(true)),
+        navigateExternal: vi.fn<HostAppAPI['navigateExternal']>(() => Promise.resolve(true)),
+      },
+      initialState,
+    })
+  );
+}
+
+function connectedDeps(): ProviderDeps {
+  return {
+    connectToHostApp: vi.fn<ProviderDeps['connectToHostApp']>(() =>
+      Promise.resolve({
+        api: {
+          getProject: vi.fn<HostAppAPI['getProject']>(() => Promise.resolve('publicdatacdm')),
+          getBaseUrl: vi.fn<HostAppAPI['getBaseUrl']>(() => Promise.resolve('https://api.cognitedata.com')),
+          getAccessToken: vi.fn<HostAppAPI['getAccessToken']>(() => Promise.resolve('test-token')),
+          getAppId: vi.fn<HostAppAPI['getAppId']>(() => Promise.resolve('asset-360-investigation-workspace')),
+        } as Partial<HostAppAPI> as HostAppAPI,
+      })
+    ),
+    createClient: vi.fn<ProviderDeps['createClient']>((config) => new CogniteClient(config)),
+  };
+}
+
+function pendingDeps(): ProviderDeps {
+  return {
+    connectToHostApp: vi.fn<ProviderDeps['connectToHostApp']>(
+      () => new Promise<ConnectToHostAppResult>(() => undefined)
+    ),
+    createClient: vi.fn<ProviderDeps['createClient']>((config) => new CogniteClient(config)),
+  };
+}
+
+function failingDeps(): ProviderDeps {
+  return {
+    connectToHostApp: vi.fn<ProviderDeps['connectToHostApp']>(() =>
+      Promise.reject(new Error('handshake timed out'))
+    ),
+    createClient: vi.fn<ProviderDeps['createClient']>((config) => new CogniteClient(config)),
+  };
+}

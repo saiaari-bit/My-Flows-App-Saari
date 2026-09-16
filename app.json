@@ -1,17 +1,17 @@
 {
-  "name": "CDF Workflow Operations",
-  "description": "IT ops view of running CDF workflows, analog operating cost, and savings recommendations",
-  "externalId": "my-flows-app-saari",
+  "name": "Asset 360 Investigation Workspace",
+  "description": "One screen to investigate an asset: its signals, work orders, and documents from the Cognite Core Data Model",
+  "externalId": "asset-360-investigation-workspace",
   "versionTag": "0.1.0",
   "infra": "appsApi",
   "deployments": [
     {
-      "org": "celanese",
-      "project": "celanse-dev",
-      "baseUrl": "https://az-eastus-1.cognitedata.com",
+      "org": "publicdata",
+      "project": "publicdatacdm",
+      "baseUrl": "https://api.cognitedata.com",
       "published": false,
       "deployClientId": "",
-      "deploySecretName": "CELANSE_DEV_AZ_EASTUS_1"
+      "deploySecretName": "PUBLICDATACDM_API_COGNITEDATA_COM"
     }
   ]
 }
