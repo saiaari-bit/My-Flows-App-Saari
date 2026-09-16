@@ -1,17 +1,17 @@
 {
-  "name": "Saari Flows App test",
-  "description": "A Flows application that helps me in learning and testing",
+  "name": "CDF Workflow Operations",
+  "description": "IT ops view of running CDF workflows, analog operating cost, and savings recommendations",
   "externalId": "my-flows-app-saari",
-  "versionTag": "0.0.1",
+  "versionTag": "0.1.0",
   "infra": "appsApi",
   "deployments": [
     {
-      "org": "cog-demo",
-      "project": "lervik-industries",
-      "baseUrl": "https://greenfield.cognitedata.com",
+      "org": "celanese",
+      "project": "celanse-dev",
+      "baseUrl": "https://az-eastus-1.cognitedata.com",
       "published": false,
       "deployClientId": "",
-      "deploySecretName": "COG_DEMO_LERVIK_INDUSTRIES_GREENFIELD"
+      "deploySecretName": "CELANSE_DEV_AZ_EASTUS_1"
     }
   ]
 }

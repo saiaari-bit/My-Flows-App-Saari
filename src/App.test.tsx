@@ -1,14 +1,17 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HostAppAPI, ConnectToHostAppResult } from '@cognite/app-sdk';
 import { CogniteClient } from '@cognite/sdk';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
+import { OperationsViewModelContext } from './context/OperationsViewModelContext';
+import { emptySnapshot } from './domain/aggregateOperations';
+import type { OperationsSnapshot, WorkflowExecutionRecord } from './domain/operationsTypes';
+import type { OperationsService } from './services/operationsService';
 
 type AppDeps = NonNullable<ComponentProps<typeof App>['deps']>;
-
 type AppApi = Pick<HostAppAPI, 'syncInternalState'>;
 
 function makeApi(): AppApi {
@@ -26,12 +29,14 @@ function makeDeps(): AppDeps {
     connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(() =>
       Promise.resolve({
         api: {
-          getProject: vi.fn<HostAppAPI['getProject']>(() => Promise.resolve('lervik-industries')),
-          getBaseUrl: vi.fn<HostAppAPI['getBaseUrl']>(() => Promise.resolve('https://cognite.test')),
+          getProject: vi.fn<HostAppAPI['getProject']>(() => Promise.resolve('celanse-dev')),
+          getBaseUrl: vi.fn<HostAppAPI['getBaseUrl']>(() =>
+            Promise.resolve('https://az-eastus-1.cognitedata.com'),
+          ),
           getAccessToken: vi.fn<HostAppAPI['getAccessToken']>(() => Promise.resolve('test-token')),
           getAppId: vi.fn<HostAppAPI['getAppId']>(() => Promise.resolve('test-app-id')),
         } as Partial<HostAppAPI> as HostAppAPI,
-      })
+      }),
     ),
     createClient: vi.fn<AppDeps['createClient']>((config) => new CogniteClient(config)),
   };
@@ -39,9 +44,45 @@ function makeDeps(): AppDeps {
 
 function makeLoadingDeps(): AppDeps {
   return {
-    connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(() => new Promise<ConnectToHostAppResult>(() => undefined)),
+    connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(
+      () => new Promise<ConnectToHostAppResult>(() => undefined),
+    ),
     createClient: vi.fn<AppDeps['createClient']>((config) => new CogniteClient(config)),
   };
+}
+
+const sampleExecution: WorkflowExecutionRecord = {
+  id: 'ex-1',
+  workflowExternalId: 'wf-cnt-extract',
+  version: '1',
+  status: 'RUNNING',
+  createdMs: 0,
+  startMs: 0,
+  endMs: null,
+  tasks: [],
+};
+
+function snapshotWithRun(): OperationsSnapshot {
+  return {
+    ...emptySnapshot(10_000),
+    executions: [sampleExecution],
+  };
+}
+
+function renderApp(
+  ui: Parameters<typeof render>[0],
+  loadWindow: OperationsService['loadWindow'] = async () => emptySnapshot(10_000),
+) {
+  return render(
+    <OperationsViewModelContext.Provider
+      value={{
+        createService: () => ({ loadWindow }),
+        nowMs: () => 10_000,
+      }}
+    >
+      {ui}
+    </OperationsViewModelContext.Provider>,
+  );
 }
 
 describe('App', () => {
@@ -50,51 +91,32 @@ describe('App', () => {
   });
 
   it('renders loading state', () => {
-    render(<App deps={makeLoadingDeps()} connectToHostApp={() => new Promise<never>(() => undefined)} />);
+    renderApp(
+      <App deps={makeLoadingDeps()} connectToHostApp={() => new Promise<never>(() => undefined)} />,
+    );
     expect(screen.getByText('Loading project...')).toBeInTheDocument();
   });
 
-  it('renders splash with deployment targets and checklist copy', async () => {
-    render(<App deps={makeDeps()} connectToHostApp={makeConnectedFn()} />);
-    await waitFor(() => expect(screen.getByText('Welcome to Flows custom apps')).toBeInTheDocument());
-    expect(screen.getByText('App deployment checklist')).toBeInTheDocument();
-    expect(screen.getByText('Plan')).toBeInTheDocument();
-    expect(screen.getByText('Explore')).toBeInTheDocument();
-    expect(screen.getByText('Deploy')).toBeInTheDocument();
-    expect(screen.getByText('Support')).toBeInTheDocument();
-    expect(screen.getByText('Help & feedback')).toBeInTheDocument();
-    expect(screen.getByText('Your app will deploy to')).toBeInTheDocument();
-    expect(screen.getByText('org')).toBeInTheDocument();
-    expect(screen.getByText('and project')).toBeInTheDocument();
-    expect(screen.getByText('cog-demo')).toBeInTheDocument();
-    expect(screen.getByText('lervik-industries')).toBeInTheDocument();
-    expect(screen.getAllByText(/SPEC\.md/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/apps deploy --interactive/)).toBeInTheDocument();
+  it('renders the operations dashboard for the connected project', async () => {
+    renderApp(<App deps={makeDeps()} connectToHostApp={makeConnectedFn()} />);
+    await waitFor(() => expect(screen.getByText('CDF workflow operations')).toBeInTheDocument());
+    expect(screen.getByText(/celanse-dev/)).toBeInTheDocument();
+    expect(screen.getByText(/Estimated analog/)).toBeInTheDocument();
+    expect(screen.getByText('Overall analog cost (24h)')).toBeInTheDocument();
+    expect(screen.getByText('Functions')).toBeInTheDocument();
+    expect(screen.getByText('Transformations')).toBeInTheDocument();
   });
 
-  it('syncs internal state when the open step changes', async () => {
+  it('syncs selected execution to the host', async () => {
     const api = makeApi();
-    render(<App deps={makeDeps()} connectToHostApp={makeConnectedFn(api)} />);
-    await waitFor(() => expect(screen.getByText('App deployment checklist')).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText('Explore'));
-
+    renderApp(
+      <App deps={makeDeps()} connectToHostApp={makeConnectedFn(api)} />,
+      async () => snapshotWithRun(),
+    );
+    await waitFor(() => expect(screen.getAllByText('wf-cnt-extract').length).toBeGreaterThan(0));
+    await userEvent.click(screen.getAllByText('wf-cnt-extract')[0]);
     expect(api.syncInternalState).toHaveBeenCalledWith(
-      JSON.stringify({ openStep: 'Explore' })
+      JSON.stringify({ selectedExecutionId: 'ex-1', tab: 'overview' }),
     );
-  });
-
-  it('restores the open step from initial state', async () => {
-    const api = makeApi();
-    render(<App
-      deps={makeDeps()}
-      connectToHostApp={() => Promise.resolve({ api, initialState: JSON.stringify({ openStep: 'Deploy' }) })}
-    />);
-    await waitFor(() => expect(screen.getByText('App deployment checklist')).toBeInTheDocument());
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /deploy/i })).toHaveAttribute('aria-expanded', 'true')
-    );
-    expect(screen.getByRole('button', { name: /plan/i })).toHaveAttribute('aria-expanded', 'false');
   });
 });
