@@ -1,7 +1,9 @@
 import { connectToHostApp as connectToHostAppImpl } from '@cognite/app-sdk';
-import type { HostAppAPI } from '@cognite/app-sdk';
-import { CogniteSdkProvider, useCogniteSdk } from '@cognite/app-sdk/react';
-import { Alert, AlertDescription, AlertTitle } from '@cognite/aura/components/alert';
+import { CogniteSdkProvider } from '@cognite/app-sdk/react';
+// Import per-component, not from the `@cognite/aura/components` barrel: the
+// barrel pulls in Aura's whole dependency graph (including large libraries like
+// mermaid and shiki), which slows the build and can exhaust memory in CI.
+import { Alert, AlertDescription } from '@cognite/aura/components/alert';
 import { Card, CardContent } from '@cognite/aura/components/card';
 import { Loader } from '@cognite/aura/components/loader';
 import { useEffect, useMemo, useState } from 'react';
@@ -9,124 +11,119 @@ import type { ComponentProps } from 'react';
 
 import appConfig from '../app.json';
 
-import { createAsset360Service } from './services/CdfAsset360Service';
-import { Asset360StateProvider } from './state/Asset360StateProvider';
-import { Asset360DepsContext, type Asset360Deps } from './state/asset360ViewModelContext';
-import { useWorkspaceStorage } from './state/workspaceStorageContext';
-import { Asset360Workspace } from './views/Asset360Workspace';
+import type { AppErrorBoundaryDeps } from '@/errors/AppErrorBoundary';
+import { AppErrorBoundary } from '@/errors/AppErrorBoundary';
+import { RecentlyViewedProvider } from '@/features/recently-viewed/RecentlyViewedProvider';
+import type { HostAppApi } from '@/host/HostAppContext';
+import { HostAppContext } from '@/host/HostAppContext';
+import { AppRouter } from '@/router/AppRouter';
+import { AppStateProvider } from '@/router/AppStateProvider';
 
-/** The host capabilities this app uses. */
-type AppApi = Pick<HostAppAPI, 'syncInternalState' | 'navigateExternal'>;
-type AppConnectResult = { api: AppApi; initialState?: string };
-
-function defaultConnectToHostApp(): Promise<AppConnectResult> {
-  return connectToHostAppImpl({ applicationName: appConfig.externalId });
-}
+type AppConnectResult = { api: HostAppApi; initialState?: string };
+type AppConnection = AppConnectResult & { project: string };
 
 const loadingFallback = (
-  <main className="flex min-h-screen items-center justify-center bg-muted/40 p-6 text-foreground">
-    <Card aria-live="polite">
-      <CardContent>
-        <div className="inline-flex items-center gap-3 text-muted-foreground">
-          <Loader size={20} />
-          <span>Connecting to Cognite Data Fusion…</span>
-        </div>
-      </CardContent>
-    </Card>
+  <main className="min-h-screen bg-muted/50 text-foreground">
+    <section className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center p-4 sm:p-8">
+      <div className="mx-auto w-full max-w-sm">
+        <Card aria-label="Loading project" aria-live="polite">
+          <CardContent>
+            <div className="inline-flex items-center gap-3 text-muted-foreground">
+              <Loader size={20} />
+              <span>Loading project...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
   </main>
 );
 
 const errorFallback = (
-  <main className="flex min-h-screen items-center justify-center bg-muted/40 p-6 text-foreground">
-    <div className="w-full max-w-md">
-      <Alert variant="error" alertStyle="card" role="alert">
-        <AlertTitle>Could not connect to Cognite Data Fusion</AlertTitle>
-        <AlertDescription>
-          This app runs inside Fusion. Open it from Fusion and reload; if it keeps failing, check that you
-          have access to this project.
-        </AlertDescription>
-      </Alert>
-    </div>
+  <main className="min-h-screen bg-muted/50 text-foreground">
+    <section className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center p-4 sm:p-8">
+      <div className="mx-auto w-full max-w-sm">
+        <Alert>
+          <AlertDescription>Failed to connect to Fusion host</AlertDescription>
+        </Alert>
+      </div>
+    </section>
   </main>
 );
-
-type WorkspaceProps = { api: AppApi };
-
-/**
- * Builds the dependency graph once the CDF client exists, then hands it to the
- * view models through context.
- */
-function Workspace({ api }: WorkspaceProps) {
-  const client = useCogniteSdk();
-
-  const deps = useMemo<Asset360Deps>(
-    () => ({
-      service: createAsset360Service(client),
-      useWorkspaceStorage,
-      // Document links are opened by the host: only it owns the browsing context.
-      openExternalUrl: async (url: string) => {
-        await api.navigateExternal({ url, openInNewTab: true });
-      },
-      now: () => Date.now(),
-    }),
-    [client, api]
-  );
-
-  return (
-    <Asset360DepsContext.Provider value={deps}>
-      <Asset360Workspace />
-    </Asset360DepsContext.Provider>
-  );
-}
 
 type AppProps = {
   deps?: ComponentProps<typeof CogniteSdkProvider>['deps'];
   connectToHostApp?: () => Promise<AppConnectResult>;
+  errorBoundaryDeps?: Partial<AppErrorBoundaryDeps>;
 };
 
-/** The handshake carries `initialState`, so nothing can mount before it lands. */
-type Handshake =
-  | { status: 'connecting' }
-  | { status: 'ready'; connection: AppConnectResult }
-  | { status: 'failed' };
+function connectWithApplicationName(): Promise<AppConnectResult> {
+  return connectToHostAppImpl({ applicationName: appConfig.externalId });
+}
 
-function App({ deps, connectToHostApp = defaultConnectToHostApp }: AppProps) {
-  const [handshake, setHandshake] = useState<Handshake>({ status: 'connecting' });
+function App({
+  deps,
+  connectToHostApp = deps?.connectToHostApp ?? connectWithApplicationName,
+  errorBoundaryDeps,
+}: AppProps) {
+  const [connection, setConnection] = useState<AppConnection | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void connectToHostApp()
-      .then((connection) => {
-        if (!cancelled) {
-          setHandshake({ status: 'ready', connection });
-        }
-      })
-      .catch((cause: unknown) => {
-        console.error('Asset 360: Fusion host handshake failed', cause);
-        if (!cancelled) {
-          setHandshake({ status: 'failed' });
-        }
-      });
+    void connectToHostApp().then(async (result) => {
+      const project = await readProject(result.api);
+      if (!cancelled) setConnection({ ...result, project });
+    });
     return () => {
       cancelled = true;
     };
   }, [connectToHostApp]);
 
-  if (handshake.status === 'connecting') {
-    return loadingFallback;
-  }
-  if (handshake.status === 'failed') {
-    return errorFallback;
-  }
-
-  const { api, initialState } = handshake.connection;
-  return (
-    <CogniteSdkProvider loadingFallback={loadingFallback} errorFallback={errorFallback} deps={deps}>
-      <Asset360StateProvider api={api} initialState={initialState}>
-        <Workspace api={api} />
-      </Asset360StateProvider>
-    </CogniteSdkProvider>
+  const hostApp = useMemo(
+    () =>
+      connection === null
+        ? null
+        : {
+            api: connection.api,
+            initialState: connection.initialState,
+            project: connection.project,
+          },
+    [connection]
   );
+
+  return (
+    // Outermost so a render exception anywhere below — including in the SDK
+    // provider or the host wiring — still produces a recoverable screen.
+    <AppErrorBoundary deps={errorBoundaryDeps}>
+      <CogniteSdkProvider loadingFallback={loadingFallback} errorFallback={errorFallback} deps={deps}>
+        {hostApp === null ? (
+          // Route state is seeded once from the host's initialState, so the tree
+          // below must not mount until that value is available — otherwise a
+          // shared deep link would render the search view and never recover.
+          loadingFallback
+        ) : (
+          <HostAppContext.Provider value={hostApp}>
+            <RecentlyViewedProvider project={hostApp.project}>
+              <AppStateProvider>
+                <main className="min-h-screen bg-muted/50 text-foreground">
+                  <AppRouter />
+                </main>
+              </AppStateProvider>
+            </RecentlyViewedProvider>
+          </HostAppContext.Provider>
+        )}
+      </CogniteSdkProvider>
+    </AppErrorBoundary>
+  );
+}
+
+async function readProject(api: HostAppApi): Promise<string> {
+  if (api.getProject === undefined) return 'standalone';
+  try {
+    return await api.getProject();
+  } catch {
+    return 'standalone';
+  }
 }
 
 export default App;

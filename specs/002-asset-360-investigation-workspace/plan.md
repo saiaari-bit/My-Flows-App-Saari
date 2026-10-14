@@ -1,6 +1,19 @@
 # Asset 360 Investigation Workspace — Implementation plan
 
-Companion to `spec.md`. Describes the architecture that satisfies it and the order of work.
+Companion to `spec.md`. The running app follows the feature layout below, matching
+`cognitedata/charan-asset-360` `main`. The earlier `views/` + `hooks/` + `cdm/` layering
+described further down in this file is no longer the implementation.
+
+```
+src/features/search/          Search view, debounced query, result list
+src/features/asset-detail/    Header, time series, activities, documents
+src/features/recently-viewed/ Per-project localStorage list, cap 10
+src/router/                   Host-synced search/detail route
+src/services/                 CDF reads for asset, time series, activity, file
+src/cognite-file-viewer/      Inline PDF and image preview
+src/errors/                   App-level error boundary
+src/host/                     Host API context and state guards
+```
 
 ## 1. Architecture
 
