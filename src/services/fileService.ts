@@ -11,6 +11,7 @@ import {
   readString,
   readTimestamp,
 } from './cdm';
+import { runCdfCall } from './runCdfCall';
 
 export const FILE_VIEW_EXTERNAL_ID = 'CogniteFile';
 
@@ -86,12 +87,12 @@ export class CdmFileService implements FileService {
     let body: unknown;
 
     try {
-      const response = await this.client.post(
+      const response = await runCdfCall(() => this.client.post(
         `/api/v1/projects/${this.client.project}/files/downloadlink`,
         {
           data: { items: [{ instanceId: { space: fileId.space, externalId: fileId.externalId } }] },
           params: { extendedExpiration: true },
-        }
+        })
       );
       body = response.data;
     } catch (error) {

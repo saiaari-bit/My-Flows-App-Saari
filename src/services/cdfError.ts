@@ -5,8 +5,9 @@ import { CogniteError, HttpError } from '@cognite/sdk';
  *
  * - `no-access` — the user lacks a capability; retrying changes nothing.
  * - `transient` — timeout / throttling / server fault; the panel's manual
- *   refresh (FR-009) is worth offering. Services never retry on their own,
- *   because FR-010 forbids traffic the user did not ask for.
+ *   refresh is worth offering. A single user action may already have retried
+ *   HTTP 429 a bounded number of times inside `runCdfCall`. That is not
+ *   background polling, and nothing else is retried automatically.
  * - `unknown` — everything else, including network and CORS failures that
  *   carry no HTTP status at all.
  */

@@ -1,6 +1,7 @@
 import type { CogniteClient } from '@cognite/sdk';
 
 import { toCdfServiceError } from './cdfError';
+import { runCdfCall } from './runCdfCall';
 
 /**
  * Shared Core Data Model primitives for the service layer.
@@ -198,7 +199,7 @@ export async function listAllInstances(
 
   try {
     do {
-      const page = await client.instances.list({ ...params, cursor });
+      const page = await runCdfCall(() => client.instances.list({ ...params, cursor }));
       if (page.items.length === 0) break;
       instances.push(...readInstances(page.items, viewExternalId));
       cursor = page.nextCursor;

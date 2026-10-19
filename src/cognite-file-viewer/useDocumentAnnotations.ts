@@ -7,6 +7,9 @@ import type {
   UseDocumentAnnotationsResult,
 } from './types';
 
+import { runCdfCall } from '@/services/runCdfCall';
+
+
 // ============================================================================
 // CDM constants
 // ============================================================================
@@ -93,7 +96,7 @@ async function fetchAllAnnotations(
   let cursor: string | undefined;
 
   do {
-    const response = await client.instances.query({
+    const response = await runCdfCall(() => client.instances.query({
       with: {
         files: {
           nodes: {
@@ -148,7 +151,7 @@ async function fetchAllAnnotations(
         },
       },
       cursors: cursor ? { annotations: cursor } : undefined,
-    });
+    }));
 
     const edges = (response.items?.annotations ?? []).filter(
       (a) => a.instanceType === 'edge',

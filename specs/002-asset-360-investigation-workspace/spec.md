@@ -83,6 +83,9 @@ the header plus three independent panels.
   (24h / 7d / 30d) are anchored to that end.
 - **FR-12** The chart uses raw datapoints. Series with no datapoints do not invent a zero.
 - **FR-13** List refresh and chart refresh are explicit actions. There is no background polling.
+  A single user-initiated CDF call may retry HTTP 429 up to three attempts with bounded
+  exponential backoff before the panel shows its transient error. That retry is part of
+  the same action, not a later refresh.
 
 ### Activities
 

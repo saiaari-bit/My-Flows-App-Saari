@@ -15,6 +15,7 @@ import {
   readItems,
   readString,
 } from './cdm';
+import { runCdfCall } from './runCdfCall';
 
 export const ASSET_VIEW_EXTERNAL_ID = 'CogniteAsset';
 
@@ -86,10 +87,10 @@ export class CdmAssetService implements AssetService {
     let items: readonly unknown[];
 
     try {
-      const response = await this.client.instances.retrieve({
+      const response = await runCdfCall(() => this.client.instances.retrieve({
         items: [{ instanceType: 'node', space: assetId.space, externalId: assetId.externalId }],
         sources: [{ source: cdmView(ASSET_VIEW_EXTERNAL_ID) }],
-      });
+      }));
       items = response.items;
     } catch (error) {
       throw toCdfServiceError(error);
@@ -114,12 +115,14 @@ export class CdmAssetService implements AssetService {
 
   private async searchByTagPrefix(text: string, limit: number): Promise<Asset[]> {
     try {
-      const response = await this.client.instances.list({
-        instanceType: 'node',
-        sources: [{ source: cdmView(ASSET_VIEW_EXTERNAL_ID) }],
-        filter: { prefix: { property: ['node', 'externalId'], value: text } },
-        limit,
-      });
+      const response = await runCdfCall(() =>
+        this.client.instances.list({
+          instanceType: 'node',
+          sources: [{ source: cdmView(ASSET_VIEW_EXTERNAL_ID) }],
+          filter: { prefix: { property: ['node', 'externalId'], value: text } },
+          limit,
+        })
+      );
       return readInstances(response.items, ASSET_VIEW_EXTERNAL_ID).map(toAsset);
     } catch (error) {
       throw toCdfServiceError(error);
@@ -138,7 +141,7 @@ export class CdmAssetService implements AssetService {
     limit: number
   ): Promise<Asset[]> {
     try {
-      const response = await this.client.post(
+      const response = await runCdfCall(() => this.client.post(
         `/api/v1/projects/${this.client.project}/models/instances/search`,
         {
           data: {
@@ -149,7 +152,7 @@ export class CdmAssetService implements AssetService {
             operator,
             limit,
           },
-        }
+        })
       );
       return readInstances(readItems(response.data), ASSET_VIEW_EXTERNAL_ID).map(toAsset);
     } catch (error) {

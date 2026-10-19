@@ -15,6 +15,13 @@ src/errors/                   App-level error boundary
 src/host/                     Host API context and state guards
 ```
 
+## Aura 1.x
+
+Stay on `@cognite/aura` `0.3.5` for this resubmission. Moving to the 1.x line is a separate
+change, after the components this app uses (`Search`, `Card`, `Checkbox`, `Dialog`,
+`Breadcrumb`, `Alert`) are checked against that release. That upgrade is also what removes
+the remaining KaTeX advisory: an npm override cannot patch it without downgrading Aura.
+
 ## 1. Architecture
 
 Four layers, each depending only on the one below it:

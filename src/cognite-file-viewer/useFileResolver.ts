@@ -1,9 +1,12 @@
 import type { CogniteClient } from '@cognite/sdk';
 import { useState, useEffect, useRef } from 'react';
 
+
 import { resolveFileDownloadConfig } from './fileResolution';
 import { inferMimeTypeFromUrl } from './mimeTypes';
 import type { FileSource, UseFileResolverResult } from './types';
+
+import { runCdfCall } from '@/services/runCdfCall';
 
 const INITIAL: UseFileResolverResult = {
   isLoading: true,
@@ -78,7 +81,7 @@ export function useFileResolver(
               : undefined;
         if (idParam === undefined) throw new Error('Invalid CDF file source');
 
-        const [fileInfo] = await client.files.retrieve([idParam]);
+        const [fileInfo] = await runCdfCall(() => client.files.retrieve([idParam]));
         if (cancelled()) return;
 
         const resolved = await resolveFileDownloadConfig(client, fileInfo);

@@ -10,6 +10,7 @@ import {
   readBoolean,
   readString,
 } from './cdm';
+import { runCdfCall } from './runCdfCall';
 
 export const TIME_SERIES_VIEW_EXTERNAL_ID = 'CogniteTimeSeries';
 
@@ -104,9 +105,11 @@ export class CdmTimeSeriesService implements TimeSeriesService {
        * series that has since been deleted, and one stale id must not blank the
        * chart panel. Unknown ids are simply absent from the response.
        */
-      const result = await this.client.datapoints.retrieveLatest(seriesIds.map(toDatapointItem), {
-        ignoreUnknownIds: true,
-      });
+      const result = await runCdfCall(() =>
+        this.client.datapoints.retrieveLatest(seriesIds.map(toDatapointItem), {
+          ignoreUnknownIds: true,
+        })
+      );
 
       return result.map((series) => ({
         instanceId: series.instanceId,
@@ -132,12 +135,14 @@ export class CdmTimeSeriesService implements TimeSeriesService {
        * datapoints. No `limit` either — the endpoint's default and maximum page
        * size are not established, so inventing one would silently truncate.
        */
-      const result = await this.client.datapoints.retrieve({
-        items: seriesIds.map(toDatapointItem),
-        start,
-        end,
-        ignoreUnknownIds: true,
-      });
+      const result = await runCdfCall(() =>
+        this.client.datapoints.retrieve({
+          items: seriesIds.map(toDatapointItem),
+          start,
+          end,
+          ignoreUnknownIds: true,
+        })
+      );
 
       const series: DatapointsRetrieveResult[number][] = result;
       return series.map(toSeriesDatapoints);

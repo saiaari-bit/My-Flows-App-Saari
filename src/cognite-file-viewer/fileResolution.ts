@@ -7,6 +7,9 @@ import {
   DocumentMimeType,
 } from './mimeTypes';
 
+import { runCdfCall } from '@/services/runCdfCall';
+
+
 // ============================================================================
 // Cache
 // ============================================================================
@@ -57,13 +60,13 @@ async function getDownloadUrlExtended(
   client: CogniteClient,
   fileId: number,
 ): Promise<string> {
-  const result = await client.post<{ items: Array<{ downloadUrl: string }> }>(
+  const result = await runCdfCall(() => client.post<{ items: Array<{ downloadUrl: string }> }>(
     `/api/v1/projects/${client.project}/files/downloadlink`,
     {
       data: { items: [{ id: fileId }] },
       params: { extendedExpiration: true },
     },
-  );
+  ));
   const downloadUrl = result.data.items[0]?.downloadUrl;
   if (!downloadUrl) throw new Error(`No download URL for file ${fileId}`);
   return downloadUrl;
@@ -77,7 +80,7 @@ async function getPdfTemporaryLink(
   client: CogniteClient,
   fileId: number,
 ): Promise<string> {
-  const response = await client.documents.preview.pdfTemporaryLink(fileId);
+  const response = await runCdfCall(() => client.documents.preview.pdfTemporaryLink(fileId));
   return response.temporaryLink;
 }
 
